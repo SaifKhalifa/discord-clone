@@ -138,20 +138,22 @@ const Chat = ({ auth, onLogout }) => {
       />
       <div className="chat-area">
         <Navbar activeChannel={activeChannel} onLogout={onLogout} />
-        {error ? <div className="error-banner">{error}</div> : null}
-        {loading && channels.length === 0 ? (
-          <div className="empty-state">Loading channels...</div>
-        ) : channels.length === 0 ? (
-          <div className="empty-state">
-            No channels available yet. Create one from the API.
-          </div>
-        ) : (
-          <ChatWindow
-            messages={messages}
-            onSendMessage={handleSendMessage}
-            disabled={!activeChannel}
-          />
-        )}
+        <div className="chat-content">
+          {error ? <div className="error-banner">{error}</div> : null}
+          {loading && channels.length === 0 ? (
+            <div className="empty-state">Loading channels...</div>
+          ) : channels.length === 0 ? (
+            <div className="empty-state">
+              No channels available yet. Create one from the API.
+            </div>
+          ) : (
+            <ChatWindow
+              messages={messages}
+              onSendMessage={handleSendMessage}
+              disabled={!activeChannel}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
