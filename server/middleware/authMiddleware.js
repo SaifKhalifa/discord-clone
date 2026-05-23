@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Session = require("../models/Session");
+const { hashToken } = require("../utils/token");
 
 const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization || "";
@@ -15,21 +16,23 @@ const authMiddleware = async (req, res, next) => {
       "username email activeSessionId"
     );
 
-    if (!user || user.activeSessionId !== decoded.sid) {
+    const sessionIdHash = hashToken(decoded.sid);
+
+    if (!user || user.activeSessionId !== sessionIdHash) {
       return res.status(401).json({ message: "Session expired. Please login." });
     }
 
     const session = await Session.findOne({
       user: user._id,
-      sessionId: decoded.sid
-    }).select("sessionId");
+      sessionIdHash
+    }).select("sessionIdHash");
 
     if (!session) {
       return res.status(401).json({ message: "Session expired. Please login." });
     }
 
     await Session.updateOne(
-      { user: user._id, sessionId: decoded.sid },
+      { user: user._id, sessionIdHash },
       { $set: { lastSeenAt: new Date() } }
     );
 
@@ -37,7 +40,8 @@ const authMiddleware = async (req, res, next) => {
       id: user._id,
       username: user.username,
       email: user.email,
-      sessionId: decoded.sid
+      sessionId: decoded.sid,
+      sessionIdHash
     };
 
     return next();
