@@ -2,6 +2,14 @@
 
 A real-time messaging web app with React, Express, Socket.io, and MongoDB. It supports JWT auth, channel-based chat, and live message updates.
 
+Built as the Summer Internship Assessment for **OppoTrain**.
+
+## Live Demo
+
+🔗 **[https://discord-clone-oppotrain.netlify.app/](https://discord-clone-oppotrain.netlify.app/)**
+
+> **Heads up:** the backend runs on a free-tier host (Render) that spins down when idle. The first request after a quiet period can take up to **~50 seconds** to cold-start — please be patient on the first login or message send.
+
 ## Tech Stack
 
 - Frontend: React, Axios, Socket.io Client, Pure CSS
@@ -122,3 +130,37 @@ On server start, a seed routine ensures the following channels exist:
 - Protected routes use JWT middleware.
 - Only one active session is allowed per user. Logging in elsewhere revokes the previous session.
 - UI uses a Discord-inspired dark theme with pure CSS.
+
+## Production Deployment
+
+The live demo is split across three services:
+
+- **Client → Netlify** — Vite static build, base directory `client/`, publish `dist/`
+- **Server → Render** — Node web service, root directory `server/`, `npm start`
+- **Database → MongoDB Atlas** — free M0 cluster with `0.0.0.0/0` network access
+
+Required production environment variables:
+
+- **Render (server):** `MONGO_URI`, `JWT_SECRET`, `CLIENT_URL` (the Netlify origin), `NODE_ENV=production`
+- **Netlify (client):** `VITE_API_URL` (Render URL + `/api`), `VITE_SOCKET_URL` (Render URL)
+
+After both are deployed, set `CLIENT_URL` on Render to the Netlify origin (no trailing slash) so CORS and Socket.io accept browser connections.
+
+## AI Usage Disclosure
+
+AI tools were used during the development process for guidance, debugging support, code improvement, and documentation assistance.
+
+All implementation decisions, integration, testing, and final project delivery were completed by **Saif Khalifa**.
+
+## License
+
+This project is open source and released under the [MIT License](LICENSE). You are free to use, modify, and redistribute it with attribution.
+
+## Author
+
+**Saif Khalifa**
+
+- GitHub: [@saifkhalifa](https://github.com/saifkhalifa)
+- Portfolio: [saifkhalifa.github.io](https://saifkhalifa.github.io)
+
+Built for the **OppoTrain Summer Internship Assessment**.
