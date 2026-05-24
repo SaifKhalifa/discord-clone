@@ -6,9 +6,10 @@ const sessionSchema = new mongoose.Schema({
     ref: "User",
     required: true
   },
-  sessionId: {
+  sessionIdHash: {
     type: String,
     required: true,
+    unique: true,
     index: true
   },
   ipAddress: {

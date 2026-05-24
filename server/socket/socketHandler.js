@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 const Message = require("../models/Message");
 const User = require("../models/User");
 const Session = require("../models/Session");
+const { hashToken } = require("../utils/token");
 
 const authenticateSocket = async (socket, next) => {
   const token = socket.handshake.auth?.token;
@@ -14,15 +15,16 @@ const authenticateSocket = async (socket, next) => {
     const user = await User.findById(decoded.id).select(
       "username activeSessionId"
     );
+    const sessionIdHash = hashToken(decoded.sid);
 
-    if (!user || user.activeSessionId !== decoded.sid) {
+    if (!user || user.activeSessionId !== sessionIdHash) {
       return next(new Error("auth_invalid_session"));
     }
 
     const session = await Session.findOne({
       user: user._id,
-      sessionId: decoded.sid
-    }).select("sessionId");
+      sessionIdHash
+    }).select("sessionIdHash");
 
     if (!session) {
       return next(new Error("auth_invalid_session"));

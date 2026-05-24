@@ -9,6 +9,14 @@ const formatTime = (value) => {
   });
 };
 
+const getInitial = (name) => {
+  if (!name) {
+    return "?";
+  }
+
+  return name.trim().charAt(0).toUpperCase();
+};
+
 const MessageList = ({ messages }) => (
   <div className="message-list">
     {messages.length === 0 ? (
@@ -16,13 +24,20 @@ const MessageList = ({ messages }) => (
     ) : (
       messages.map((message) => (
         <div key={message._id || message.tempId} className="message-item">
-          <div className="message-header">
-            <span className="message-sender">
-              {message.sender?.username || "Unknown"}
-            </span>
-            <span>{formatTime(message.createdAt)}</span>
+          <div className="message-avatar">
+            {getInitial(message.sender?.username || "U")}
           </div>
-          <div className="message-content">{message.content}</div>
+          <div className="message-body">
+            <div className="message-header">
+              <span className="message-sender">
+                {message.sender?.username || "Unknown"}
+              </span>
+              <span className="message-time">
+                {formatTime(message.createdAt)}
+              </span>
+            </div>
+            <div className="message-content">{message.content}</div>
+          </div>
         </div>
       ))
     )}

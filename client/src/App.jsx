@@ -3,6 +3,8 @@ import { useState } from "react";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Chat from "./pages/Chat";
+import About from "./pages/About";
+import Sessions from "./pages/Sessions";
 import api from "./api/axios";
 
 const getStoredAuth = () => {
@@ -63,6 +65,9 @@ const App = () => {
           </RequireAuth>
         }
       />
+      <Route path="/about" element={<About />} />
+      <Route path="/info" element={<About />} />
+      <Route path="/sessions" element={<Sessions auth={auth} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -1,20 +1,11 @@
-require("dotenv").config();
-
-const express = require("express");
 const http = require("http");
-const cors = require("cors");
 const { Server } = require("socket.io");
 const connectDB = require("./config/db");
-const authRoutes = require("./routes/authRoutes");
-const channelRoutes = require("./routes/channelRoutes");
-const messageRoutes = require("./routes/messageRoutes");
 const setupSocket = require("./socket/socketHandler");
 const Channel = require("./models/Channel");
+const { app, clientUrl } = require("./app");
 
-const app = express();
 const server = http.createServer(app);
-
-const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
 
 const io = new Server(server, {
   cors: {
@@ -25,17 +16,6 @@ const io = new Server(server, {
 });
 
 app.set("io", io);
-
-app.use(cors({ origin: clientUrl, credentials: true }));
-app.use(express.json());
-
-app.get("/", (req, res) => {
-  res.json({ status: "ok" });
-});
-
-app.use("/api/auth", authRoutes);
-app.use("/api/channels", channelRoutes);
-app.use("/api/messages", messageRoutes);
 
 setupSocket(io);
 

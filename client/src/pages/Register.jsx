@@ -34,53 +34,85 @@ const Register = ({ onRegister }) => {
 
   return (
     <div className="auth-page">
-      <div className="auth-card">
-        <h1>Create account</h1>
-        <p>Join the channels and start chatting.</p>
-        {error ? <div className="error-banner">{error}</div> : null}
-        <form onSubmit={handleSubmit}>
-          <div className="form-field">
-            <label htmlFor="username">Username</label>
-            <input
-              id="username"
-              name="username"
-              type="text"
-              value={form.username}
-              onChange={handleChange}
-              required
-            />
+      <div className="auth-shell">
+        <div className="auth-panel">
+          <div className="auth-brand">
+            <div className="app-mark">DC</div>
+            <div>
+              <div className="app-title">Discord Clone</div>
+              <div className="app-subtitle">Realtime chat space</div>
+            </div>
           </div>
-          <div className="form-field">
-            <label htmlFor="email">Email</label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              value={form.email}
-              onChange={handleChange}
-              required
-            />
+          <h1>Create your account</h1>
+          <p>Join the channels and start chatting in seconds.</p>
+          <div className="auth-badges">
+            <span>Fast signup</span>
+            <span>Realtime sync</span>
+            <span>Mobile ready</span>
           </div>
-          <div className="form-field">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              value={form.password}
-              onChange={handleChange}
-              required
-            />
-          </div>
-          <div className="form-actions">
-            <button className="btn btn-primary" type="submit" disabled={loading}>
-              {loading ? "Creating..." : "Register"}
-            </button>
+          <div className="auth-links">
+            <Link className="helper-link" to="/about">
+              About / Info
+            </Link>
             <Link className="helper-link" to="/login">
-              Already have an account? Login
+              Already have an account?
             </Link>
           </div>
-        </form>
+        </div>
+        <div className="auth-card">
+          <div className="auth-card-header">
+            <h2>Register</h2>
+            <p>Create your profile to jump in.</p>
+          </div>
+          {error ? <div className="error-banner">{error}</div> : null}
+          <form onSubmit={handleSubmit}>
+            <div className="form-field">
+              <label htmlFor="username">Username</label>
+              <input
+                id="username"
+                name="username"
+                type="text"
+                value={form.username}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div className="form-field">
+              <label htmlFor="email">Email</label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                value={form.email}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div className="form-field">
+              <label htmlFor="password">Password</label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                value={form.password}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div className="form-actions">
+              <button
+                className="btn btn-primary"
+                type="submit"
+                disabled={loading}
+              >
+                {loading ? "Creating..." : "Register"}
+              </button>
+              <Link className="helper-link" to="/login">
+                Already have an account? Login
+              </Link>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );

@@ -1,8 +1,11 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const crypto = require("crypto");
 const User = require("../models/User");
 const Session = require("../models/Session");
+const PendingLogin = require("../models/PendingLogin");
+const { generateRandomToken, hashToken } = require("../utils/token");
+
+const PENDING_LOGIN_TTL_MINUTES = 7;
 
 const generateToken = (user, sessionId) =>
   jwt.sign(
@@ -11,23 +14,83 @@ const generateToken = (user, sessionId) =>
     { expiresIn: "7d" }
   );
 
-const createSession = async (user, req) => {
-  const sessionId = crypto.randomBytes(24).toString("hex");
-  const ipAddress = req.headers["x-forwarded-for"]?.split(",")[0] || req.ip || "";
-  const userAgent = req.get("user-agent") || "";
+const getClientMeta = (req) => ({
+  ipAddress: req.headers["x-forwarded-for"]?.split(",")[0] || req.ip || "",
+  userAgent: req.get("user-agent") || ""
+});
 
-  await Session.create({
+const buildSessionSummary = (session) => ({
+  id: session._id.toString(),
+  ipAddress: session.ipAddress,
+  userAgent: session.userAgent,
+  createdAt: session.createdAt,
+  lastSeenAt: session.lastSeenAt
+});
+
+const isAllowedOrigin = (req) => {
+  const origin = req.get("origin");
+  if (!origin) {
+    return true;
+  }
+
+  const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+  return origin === clientUrl;
+};
+
+const createSession = async (user, req, expectedActiveSessionHash = null) => {
+  const sessionId = generateRandomToken(24);
+  const sessionIdHash = hashToken(sessionId);
+  const { ipAddress, userAgent } = getClientMeta(req);
+  const now = new Date();
+
+  const updatedUser = await User.findOneAndUpdate(
+    { _id: user._id, activeSessionId: expectedActiveSessionHash },
+    { $set: { activeSessionId: sessionIdHash, lastLoginAt: now } },
+    { new: true }
+  );
+
+  if (!updatedUser) {
+    return { conflict: true };
+  }
+
+  try {
+    await Session.create({
+      user: user._id,
+      sessionIdHash,
+      ipAddress,
+      userAgent,
+      lastSeenAt: now
+    });
+  } catch (err) {
+    await User.updateOne(
+      { _id: user._id, activeSessionId: sessionIdHash },
+      { $set: { activeSessionId: expectedActiveSessionHash } }
+    );
+    throw err;
+  }
+
+  return { sessionId, sessionIdHash, user: updatedUser };
+};
+
+const createPendingLogin = async (user, req, existingSessionHash) => {
+  const pendingLoginToken = generateRandomToken(32);
+  const csrfToken = generateRandomToken(24);
+  const expiresAt = new Date(
+    Date.now() + PENDING_LOGIN_TTL_MINUTES * 60 * 1000
+  );
+  const { ipAddress, userAgent } = getClientMeta(req);
+
+  await PendingLogin.create({
     user: user._id,
-    sessionId,
+    tokenHash: hashToken(pendingLoginToken),
+    csrfTokenHash: hashToken(csrfToken),
+    existingSessionHash,
     ipAddress,
-    userAgent
+    userAgent,
+    expiresAt
   });
 
-  user.activeSessionId = sessionId;
-  user.lastLoginAt = new Date();
-  await user.save();
-
-  return sessionId;
+  return { pendingLoginToken, csrfToken, expiresAt };
 };
 
 const disconnectStaleSockets = async (req, userId, currentSessionId) => {
@@ -40,7 +103,8 @@ const disconnectStaleSockets = async (req, userId, currentSessionId) => {
   for (const socket of sockets) {
     if (socket.data.sessionId !== currentSessionId) {
       socket.emit("error_message", {
-        message: "Your session was closed because you signed in elsewhere.",
+        message:
+          "Your session was signed out because a new login was confirmed.",
         code: "SESSION_REVOKED"
       });
       socket.disconnect(true);
@@ -72,8 +136,11 @@ const register = async (req, res) => {
     password: hashedPassword
   });
 
-  const sessionId = await createSession(user, req);
-  const token = generateToken(user, sessionId);
+  const result = await createSession(user, req, null);
+  if (result.conflict) {
+    return res.status(409).json({ message: "Login already active." });
+  }
+  const token = generateToken(user, result.sessionId);
 
   return res.status(201).json({
     token,
@@ -99,16 +166,73 @@ const login = async (req, res) => {
   }
 
   if (user.activeSessionId) {
-    await Session.deleteOne({
+    const existingSession = await Session.findOne({
       user: user._id,
-      sessionId: user.activeSessionId
+      sessionIdHash: user.activeSessionId
+    }).select("ipAddress userAgent createdAt lastSeenAt");
+
+    if (existingSession) {
+      await PendingLogin.deleteMany({ user: user._id, consumedAt: null });
+      const pending = await createPendingLogin(user, req, user.activeSessionId);
+      return res.status(409).json({
+        code: "SESSION_CONFLICT",
+        message:
+          "You are already signed in on another device or browser.",
+        pendingLoginToken: pending.pendingLoginToken,
+        csrfToken: pending.csrfToken,
+        expiresAt: pending.expiresAt,
+        existingSession: buildSessionSummary(existingSession)
+      });
+    }
+
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { activeSessionId: null } }
+    );
+  }
+
+  await PendingLogin.deleteMany({ user: user._id });
+
+  const sessionResult = await createSession(user, req, null);
+  if (sessionResult.conflict) {
+    const latestUser = await User.findById(user._id).select("activeSessionId");
+    const activeSessionHash = latestUser?.activeSessionId;
+    if (activeSessionHash) {
+      const existingSession = await Session.findOne({
+        user: user._id,
+        sessionIdHash: activeSessionHash
+      }).select("ipAddress userAgent createdAt lastSeenAt");
+
+      if (existingSession) {
+        await PendingLogin.deleteMany({ user: user._id, consumedAt: null });
+        const pending = await createPendingLogin(user, req, activeSessionHash);
+        return res.status(409).json({
+          code: "SESSION_CONFLICT",
+          message:
+            "You are already signed in on another device or browser.",
+          pendingLoginToken: pending.pendingLoginToken,
+          csrfToken: pending.csrfToken,
+          expiresAt: pending.expiresAt,
+          existingSession: buildSessionSummary(existingSession)
+        });
+      }
+    }
+
+    return res.status(409).json({
+      message: "Login already active. Please try again."
     });
   }
 
-  const sessionId = await createSession(user, req);
-  const token = generateToken(user, sessionId);
-  await Session.deleteMany({ user: user._id, sessionId: { $ne: sessionId } });
-  await disconnectStaleSockets(req, user._id.toString(), sessionId);
+  const token = generateToken(sessionResult.user, sessionResult.sessionId);
+  await Session.deleteMany({
+    user: user._id,
+    sessionIdHash: { $ne: sessionResult.sessionIdHash }
+  });
+  await disconnectStaleSockets(
+    req,
+    user._id.toString(),
+    sessionResult.sessionId
+  );
 
   return res.json({
     token,
@@ -123,22 +247,22 @@ const me = async (req, res) => {
 const getSession = async (req, res) => {
   const session = await Session.findOne({
     user: req.user.id,
-    sessionId: req.user.sessionId
-  }).select("sessionId ipAddress userAgent createdAt lastSeenAt");
+    sessionIdHash: req.user.sessionIdHash
+  }).select("ipAddress userAgent createdAt lastSeenAt");
 
   if (!session) {
     return res.status(404).json({ message: "Session not found." });
   }
 
-  return res.json(session);
+  return res.json(buildSessionSummary(session));
 };
 
 const logout = async (req, res) => {
-  const { id, sessionId } = req.user;
+  const { id, sessionIdHash } = req.user;
 
-  await Session.deleteOne({ user: id, sessionId });
+  await Session.deleteOne({ user: id, sessionIdHash });
   await User.updateOne(
-    { _id: id, activeSessionId: sessionId },
+    { _id: id, activeSessionId: sessionIdHash },
     { $set: { activeSessionId: null } }
   );
 
@@ -146,7 +270,7 @@ const logout = async (req, res) => {
   if (io) {
     const sockets = await io.in(`user:${id}`).fetchSockets();
     for (const socket of sockets) {
-      if (socket.data.sessionId === sessionId) {
+      if (socket.data.sessionId === req.user.sessionId) {
         socket.emit("error_message", {
           message: "You have been logged out.",
           code: "SESSION_LOGOUT"
@@ -159,9 +283,162 @@ const logout = async (req, res) => {
   return res.json({ message: "Logged out." });
 };
 
+const confirmLogin = async (req, res) => {
+  const { pendingLoginToken, csrfToken, decision } = req.body;
+  if (!pendingLoginToken || !csrfToken || !decision) {
+    return res.status(400).json({ message: "Missing confirmation details." });
+  }
+
+  if (!isAllowedOrigin(req)) {
+    return res.status(403).json({ message: "Invalid request origin." });
+  }
+
+  const now = new Date();
+  const pending = await PendingLogin.findOne({
+    tokenHash: hashToken(pendingLoginToken),
+    consumedAt: null,
+    expiresAt: { $gt: now }
+  });
+
+  if (!pending) {
+    return res.status(410).json({
+      message:
+        "This login confirmation has expired. Please login again."
+    });
+  }
+
+  if (pending.csrfTokenHash !== hashToken(csrfToken)) {
+    return res.status(403).json({ message: "Invalid confirmation token." });
+  }
+
+  const consumed = await PendingLogin.findOneAndUpdate(
+    {
+      tokenHash: pending.tokenHash,
+      csrfTokenHash: pending.csrfTokenHash,
+      consumedAt: null,
+      expiresAt: { $gt: now }
+    },
+    { $set: { consumedAt: now } },
+    { new: true }
+  );
+
+  if (!consumed) {
+    return res.status(410).json({
+      message:
+        "This login confirmation has expired. Please login again."
+    });
+  }
+
+  if (decision === "keep") {
+    return res.json({
+      status: "cancelled",
+      message: "Login cancelled. Your existing session is still active."
+    });
+  }
+
+  if (decision !== "continue") {
+    return res.status(400).json({ message: "Invalid confirmation choice." });
+  }
+
+  const user = await User.findById(pending.user);
+  if (!user) {
+    return res.status(404).json({ message: "User not found." });
+  }
+
+  const sessionId = generateRandomToken(24);
+  const sessionIdHash = hashToken(sessionId);
+  const { ipAddress, userAgent } = getClientMeta(req);
+
+  const updatedUser = await User.findOneAndUpdate(
+    { _id: user._id, activeSessionId: pending.existingSessionHash },
+    { $set: { activeSessionId: sessionIdHash, lastLoginAt: now } },
+    { new: true }
+  );
+
+  if (!updatedUser) {
+    return res.status(409).json({
+      message: "Session state changed. Please login again."
+    });
+  }
+
+  try {
+    await Session.create({
+      user: user._id,
+      sessionIdHash,
+      ipAddress,
+      userAgent,
+      lastSeenAt: now
+    });
+  } catch (err) {
+    await User.updateOne(
+      { _id: user._id, activeSessionId: sessionIdHash },
+      { $set: { activeSessionId: pending.existingSessionHash } }
+    );
+    throw err;
+  }
+
+  await Session.deleteMany({
+    user: user._id,
+    sessionIdHash: { $ne: sessionIdHash }
+  });
+  await disconnectStaleSockets(req, user._id.toString(), sessionId);
+
+  const token = generateToken(updatedUser, sessionId);
+  return res.json({
+    token,
+    user: { id: user._id, username: user.username, email: user.email }
+  });
+};
+
+const listSessions = async (req, res) => {
+  const sessions = await Session.find({ user: req.user.id })
+    .sort({ lastSeenAt: -1 })
+    .select("sessionIdHash ipAddress userAgent createdAt lastSeenAt");
+
+  const data = sessions.map((session) => ({
+    id: session._id.toString(),
+    ipAddress: session.ipAddress,
+    userAgent: session.userAgent,
+    createdAt: session.createdAt,
+    lastSeenAt: session.lastSeenAt,
+    isCurrent: session.sessionIdHash === req.user.sessionIdHash
+  }));
+
+  return res.json({ sessions: data });
+};
+
+const revokeSession = async (req, res) => {
+  const { sessionId } = req.body;
+  if (!sessionId) {
+    return res.status(400).json({ message: "Session id is required." });
+  }
+
+  const session = await Session.findOne({
+    _id: sessionId,
+    user: req.user.id
+  }).select("sessionIdHash");
+
+  if (!session) {
+    return res.status(404).json({ message: "Session not found." });
+  }
+
+  if (session.sessionIdHash === req.user.sessionIdHash) {
+    return res
+      .status(400)
+      .json({ message: "Cannot revoke the current session." });
+  }
+
+  await Session.deleteOne({ _id: sessionId, user: req.user.id });
+
+  return res.json({ message: "Session revoked." });
+};
+
 module.exports = {
   register,
   login,
+  confirmLogin,
+  listSessions,
+  revokeSession,
   me,
   getSession,
   logout
