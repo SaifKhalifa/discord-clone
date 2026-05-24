@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-const licenseUrl = "#"; // TODO: replace with link to LICENSE on GitHub once docs are merged
+const licenseUrl = "https://raw.githubusercontent.com/SaifKhalifa/discord-clone/refs/heads/docs/documentation/LICENSE"; // TODO: replace with link to LICENSE on GitHub once docs are merged
 
 const ProjectInfoModal = ({ open, onClose }) => {
   useEffect(() => {
