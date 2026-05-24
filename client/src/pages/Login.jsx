@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import api from "../api/axios";
+import ProjectInfoModal from "../components/ProjectInfoModal";
 
 const Login = ({ onLogin }) => {
   const navigate = useNavigate();
@@ -14,6 +15,7 @@ const Login = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [decisionLoading, setDecisionLoading] = useState(false);
   const [pendingLogin, setPendingLogin] = useState(null);
+  const [infoOpen, setInfoOpen] = useState(true);
 
   const pendingSession = pendingLogin?.existingSession || null;
 
@@ -132,6 +134,7 @@ const Login = ({ onLogin }) => {
 
   return (
     <div className="auth-page">
+      <ProjectInfoModal open={infoOpen} onClose={() => setInfoOpen(false)} />
       <div className="auth-shell">
         <div className="auth-panel">
           <div className="auth-brand">
@@ -149,6 +152,13 @@ const Login = ({ onLogin }) => {
             <span>Clean signal</span>
           </div>
           <div className="auth-links">
+            <button
+              className="helper-link link-button"
+              type="button"
+              onClick={() => setInfoOpen(true)}
+            >
+              Project info & demo
+            </button>
             <Link className="helper-link" to="/about">
               About / Info
             </Link>
