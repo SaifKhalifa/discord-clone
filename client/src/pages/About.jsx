@@ -3,6 +3,7 @@ import avatar from "../assets/Github_TransBG.png";
 
 const githubUrl = "https://github.com/saifkhalifa";
 const portfolioUrl = "https://saifkhalifa.github.io";
+const repoUrl = "https://github.com/SaifKhalifa/discord-clone";
 
 const About = () => (
   <div className="about-page">
@@ -27,6 +28,12 @@ const About = () => (
         <br />
         <a href={portfolioUrl} target="_blank" rel="noreferrer">
           saifkhalifa.github.io
+        </a>
+        <br />
+        View the source code for this project:
+        <br />
+        <a href={repoUrl} target="_blank" rel="noreferrer">
+          github.com/SaifKhalifa/discord-clone
         </a>
       </p>
 
